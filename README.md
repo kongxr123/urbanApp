@@ -13,6 +13,15 @@ to config the firebase and Google-map geolocation
 
 - Generate the google geo API in the Google map to add in the AndroidManifest.xml.
 
+- https://firebase.google.com/docs/web/setup?hl=zh-cn#add-sdk-and-initialize
+
+- https://firebase.google.com/docs/admin/setup#node.js
+
+- firebase数据库连接 https://console.firebase.google.com/u/0/project/urban-computing-cb07c/storage/urban-computing-cb07c.appspot.com/files
+
+## 涉及知识点：
+- https://juejin.cn/post/6993173747221921829#heading-8
+- 开源api：http://api.irishrail.ie/realtime/realtime.asmx/getAllStationsXML
 
 ## Feature
 Login system
