@@ -1,12 +1,16 @@
 package com.example.urban;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
+import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
@@ -16,14 +20,25 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.location.OnNmeaMessageListener;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+
+import org.greenrobot.eventbus.EventBus;
+import org.greenrobot.eventbus.Subscribe;
+import org.greenrobot.eventbus.ThreadMode;
 
 import java.io.IOException;
+import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.TimeZone;
@@ -32,31 +47,33 @@ import java.util.TimerTask;
 
 import static java.lang.Double.NaN;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity  {
 
     TextView tv_time, tv_wx, tv_wy, tv_wz, tv_fx, tv_fy, tv_fz, tv_mx, tv_my, tv_mz, tv_pr;     // Sensor Data Display Controls
     TextView tv_gnss_tim, tv_gnss_lat, tv_gnss_lng, tv_gnss_alt;      // GNSS Data Display Controls
     TextView tv_nmea_tim, tv_nmea_lat, tv_nmea_lng, tv_nmea_alt;     // NMEA Data Display Controls
     Button   btn_save;      // 数据保存按钮
-    private float[] wib = new float[30], fsf = new float[30], mag = new float[30];     // motion sensor data
-    private float pre;      // 气压传感器数据
-    private int[] CNT = new int[]{0, 0, 0, 0};      // count value
-    private float[] sensordata = new float[10]; // motion sensor data array
-    private double[] gnssData = new double[8]; // GNSS data array
-    private double[] nmeaData = new double[10]; // NMEA data array
+    Button   button ;      // 数据保存按钮
+    public float[] wib = new float[30], fsf = new float[30], mag = new float[30];     // motion sensor data
+    public float pre;      // 气压传感器数据
+    public int[] CNT = new int[]{0, 0, 0, 0};      // count value
+    public float[] sensordata = new float[10]; // motion sensor data array
+    public double[] gnssData = new double[8]; // GNSS data array
+    public double[] nmeaData = new double[10]; // NMEA data array
     public static long t_stp, t0_stp; // system time flag
     public static float t; // system time
     public static float PI = 3.141592653f; // PI constant
     public static float DEG = PI / 180.0f; // degree conversion constant
-
-    private static final int SENSORS = 201; // sensor data display message label
-    private static final int GNSS = 202; // GNSS data display label
-    private static final int NMEA = 203; // NMEA data display label
-    private static final int OPEN_SET_REQUEST = 600; // permission request flag
-    private DataStore dataSource; // data storage class
-    private static boolean isSave = false; // data save flag
-
-    protected void onCreate(Bundle savedInstanceState) {
+    public static final int SENSORS = 201; // sensor data display message label
+    public static final int GNSS = 202; // GNSS data display label
+    public static final int NMEA = 203; // NMEA data display label
+    public static final int OPEN_SET_REQUEST = 600; // permission request flag
+    public DataStore dataSource; // data storage class
+    public MessageEvent messageEvent;
+    public static boolean isSave = false; // data save flag
+    public final String TAG="position";
+    @RequiresApi(api = Build.VERSION_CODES.S)
+    public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         tv_time = findViewById(R.id.tv_time); // Control initialization
@@ -79,6 +96,27 @@ public class MainActivity extends AppCompatActivity {
         tv_nmea_lng = findViewById(R.id.tv_NMEALng);
         tv_nmea_alt = findViewById(R.id.tv_NMEAAlt);
         btn_save = findViewById(R.id.btn_save);
+        button = findViewById(R.id.button);
+        button.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                //监听按钮，如果点击，就跳转
+                Intent intent = new Intent();
+                Bundle bundle=new Bundle();
+                if(String.valueOf(gnssData[1])!=null&&String.valueOf(gnssData[2])!=null) {
+                    bundle.putString("lat", String.valueOf(gnssData[1]));
+                    bundle.putString("lng", String.valueOf(gnssData[2]));
+                    Log.d(TAG, String.valueOf(gnssData[1]));
+                    Log.d(TAG, String.valueOf(gnssData[2]));
+                }
+                EventBus.getDefault().post(new MainActivity());
+                intent.setComponent(new ComponentName("com.example.urban", "com.example.urban.MapsActivity"));//参数为包名和类名，注意类名中要包括包名
+                sendBroadcast(intent);
+                intent.setClass(MainActivity.this,MapsActivity.class);
+                intent.putExtras(bundle);
+                startActivity(intent);
+            }
+        });
 
         // 请求权限
         int hasPermission = ContextCompat.checkSelfPermission(getApplication(),
@@ -86,8 +124,9 @@ public class MainActivity extends AppCompatActivity {
         if (hasPermission != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
                     OPEN_SET_REQUEST);
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.HIGH_SAMPLING_RATE_SENSORS},
+                    OPEN_SET_REQUEST);
         }
-
         t0_stp = System.currentTimeMillis();
         MsgHandler msgHandler = new MsgHandler(); // message handler
         dataSource = new DataStore(getApplicationContext()); // data storage class
@@ -98,7 +137,6 @@ public class MainActivity extends AppCompatActivity {
         Sensor sensor_pre = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE);//Used to sense air pressure
 
         sensorManager.registerListener(new SensorEventListener() { // Register gyroscope data listener
-
             public void onSensorChanged(SensorEvent event) {
                 wib[0] += event.values[0];
                 wib[1] += event.values[1];
@@ -106,10 +144,9 @@ public class MainActivity extends AppCompatActivity {
                 CNT[0]++;
             }
 
-
             public void onAccuracyChanged(Sensor sensor, int accuracy) {
             }
-        }, sensor_gyr, sensorManager.SENSOR_DELAY_FASTEST);
+        }, sensor_gyr, sensorManager.SENSOR_DELAY_UI);
 
 
         sensorManager.registerListener(new SensorEventListener() {      // Register accelerometer data monitoring
@@ -123,7 +160,7 @@ public class MainActivity extends AppCompatActivity {
 
             public void onAccuracyChanged(Sensor sensor, int accuracy) {
             }
-        }, sensor_acc, sensorManager.SENSOR_DELAY_FASTEST);
+        }, sensor_acc, sensorManager.SENSOR_DELAY_UI);
 
 
         sensorManager.registerListener(new SensorEventListener() {      // Registering Magnetometer Data Listening
@@ -135,7 +172,7 @@ public class MainActivity extends AppCompatActivity {
             }
             public void onAccuracyChanged(Sensor sensor, int accuracy) {
             }
-        }, sensor_mag, sensorManager.SENSOR_DELAY_FASTEST);
+        }, sensor_mag, sensorManager.SENSOR_DELAY_UI);
 
 
         sensorManager.registerListener(new SensorEventListener() {      // Registering barometric data monitoring
@@ -145,7 +182,7 @@ public class MainActivity extends AppCompatActivity {
             }
             public void onAccuracyChanged(Sensor sensor, int accuracy) {
             }
-        }, sensor_pre, sensorManager.SENSOR_DELAY_FASTEST);
+        }, sensor_pre, sensorManager.SENSOR_DELAY_UI);
 
 
         Timer timer = new Timer();              // Timer - used to regularly sample and save data
@@ -177,6 +214,7 @@ public class MainActivity extends AppCompatActivity {
                 if (isSave && dataSource !=null) {
                     try {
                         dataSource.writeCSVData(sensordata, gnssData, nmeaData, t); //Save all data
+                        messageEvent.writeGnss(gnssData);
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
@@ -218,6 +256,15 @@ public class MainActivity extends AppCompatActivity {
                 Message msg = msgHandler.obtainMessage(); // Send message to update data
                 msg.arg1 = GNSS;
                 msgHandler.sendMessage(msg);
+                EventBus.getDefault().post(new MessageEvent(gnssData[1],gnssData[2]));
+                FirebaseDatabase database = FirebaseDatabase.getInstance();
+                Date date = new Date();
+                @SuppressLint("SimpleDateFormat") DateFormat dateFormat = new SimpleDateFormat("yyyy,MM,dd HH:mm:ss");
+                String format = dateFormat.format(date);
+                DatabaseReference latitude = database.getReference(format).child("latitude");
+                DatabaseReference longitude = database.getReference(format).child("longtitude");
+                latitude.setValue(gnssData[1]);
+                longitude.setValue(gnssData[2]);
             }
         });
 
@@ -295,4 +342,5 @@ public class MainActivity extends AppCompatActivity {
         format.setTimeZone(TimeZone.getTimeZone( "UTC+1")); //Irish time zone GMT+8
         return format.format(new Date(sec));
     }
+
 }

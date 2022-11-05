@@ -1,9 +1,18 @@
 package com.example.urban;
 import android.content.Context;
+import android.net.Uri;
+import android.util.Log;
+import androidx.annotation.NonNull;
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageReference;
+import com.google.firebase.storage.UploadTask;
 
 import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+
 
 public class DataStore {
     private static String filename;
@@ -12,6 +21,7 @@ public class DataStore {
     private BufferedWriter fos;
     private static Context context;
     private static Writer writer;
+    private final String TAG="position";
     public DataStore(Context mainContext){
         context = mainContext;
     }
@@ -38,6 +48,22 @@ public class DataStore {
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
+        FirebaseStorage storage = FirebaseStorage.getInstance();
+        StorageReference storageReference = storage.getReferenceFromUrl("gs://urban-computing-cb07c.appspot.com/files").child(filename);
+        Log.d(TAG,storageReference.toString());
+        UploadTask uploadTask = storageReference.putFile(Uri.fromFile(file));
+        Log.d(TAG, uploadTask.toString());
+        uploadTask.addOnFailureListener(new OnFailureListener() {
+            @Override
+            public void onFailure(@NonNull Exception exception) {
+                Log.e(TAG, exception.toString());
+            }
+        }).addOnSuccessListener(new OnSuccessListener<UploadTask.TaskSnapshot>() {
+            @Override
+            public void onSuccess(UploadTask.TaskSnapshot taskSnapshot) {
+                Log.d(TAG, "success upload");
+            }
+        });
     }
 
     public void close(){
