@@ -22,6 +22,7 @@ to config the firebase and Google-map geolocation
 ## 涉及知识点：
 - https://juejin.cn/post/6993173747221921829#heading-8
 - 开源api：http://api.irishrail.ie/realtime/realtime.asmx/getAllStationsXML
+- 图床：https://sm.ms/
 
 ## Feature
 Login system
