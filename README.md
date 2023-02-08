@@ -2,7 +2,7 @@
 获取手机运动传感器数据，gnss传感器数据
 
 ## Application description
-实现获取实时停车场信息的app，方便用户停车。
+实现获取实时用户位置
 
 ## How to start
 run npx react-native eject to generate the android and ios folder,
